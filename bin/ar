@@ -55,8 +55,9 @@ done
 ndups=
 for o in $dups; do
   newtgtname=$(echo "$o" | sed 's:/:_:g')
-  /bin/cp "$o" "$_TMPDIR/$newtgtname"
+  /bin/cp "$o" "$_TMPDIR/$newtgtname" || exit 1
   ndups="$ndups $_TMPDIR/$newtgtname"
 done
 
 /bin/ar -qc "$tgt" $ndups
+exit $?
