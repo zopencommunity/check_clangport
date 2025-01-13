@@ -31,26 +31,25 @@ cat <<zz
     #
     # Find the path to clang
     #
-
-    # Use ibm-clang preferably...
-    CLANG_PATH=\$(PATH="\$ZOPEN_OLD_PATH" /bin/type ibm-clang 2>/dev/null | cut -f3 -d' ')
+    # Prefer OEL Clang since IBM-clang introduces elevated warnings to errors
+    CLANG_PATH=\$(PATH="\$ZOPEN_OLD_PATH" /bin/type clang 2>/dev/null | cut -f3 -d' ')
     if [ ! -z "\${CLANG_PATH}" ] ; then
-        # ibm-clang exists
-        #echo "Using ibm-clang: \${CLANG_PATH}"
+        # clang exists
+        #echo "Using clang: \${CLANG_PATH}"
         CLANG_BIN=\$(basename \${CLANG_PATH})
-    else
-        #echo "ibm-clang does not exist, trying next compiler choice..."
-        CLANG_BIN=""
     fi
 
-    # ...fall back on clang 
+    # Use ibm-clang preferably...
     if [ -z "\${CLANG_BIN}" ] ; then
-        CLANG_PATH=\$(PATH="\$ZOPEN_OLD_PATH" /bin/type clang 2>/dev/null | cut -f3 -d' ')
-        if [ ! -z "\${CLANG_PATH}" ] ; then
-            # clang exists
-            #echo "Using clang: \${CLANG_PATH}"
-            CLANG_BIN=\$(basename \${CLANG_PATH})
-        fi
+      CLANG_PATH=\$(PATH="\$ZOPEN_OLD_PATH" /bin/type ibm-clang 2>/dev/null | cut -f3 -d' ')
+      if [ ! -z "\${CLANG_PATH}" ] ; then
+          # ibm-clang exists
+          #echo "Using ibm-clang: \${CLANG_PATH}"
+          CLANG_BIN=\$(basename \${CLANG_PATH})
+      else
+          #echo "ibm-clang does not exist, trying next compiler choice..."
+          CLANG_BIN=""
+      fi
     fi
   else
     return 0 # This should do nothing if not in zopen build
@@ -83,8 +82,7 @@ cat <<zz
     if [ "\${CLANG_BIN}" = "ibm-clang" ] ; then
         export CC="ibm-clang"
         export CXX="ibm-clang++"
-    fi
-    if [ "\${CLANG_BIN}" = "clang" ] ; then
+    elif [ "\${CLANG_BIN}" = "clang" ] ; then
         export CC="clang"
         export CXX="clang++"
     fi
@@ -92,7 +90,7 @@ cat <<zz
     export ZOPEN_CPPFLAGS="-DNSIG=42 -D_XOPEN_SOURCE=600 -D_ALL_SOURCE -D_OPEN_SYS_FILE_EXT=1 -D_AE_BIMODAL=1 -D_ENHANCED_ASCII_EXT=0xFFFFFFFF"
     export ZOPEN_CFLAGS="-fzos-le-char-mode=ascii -std=gnu11 -mnocsect -fno-short-enums -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -m64 -mzos-target=zosv2r4"
     export ZOPEN_CXXFLAGS="-fzos-le-char-mode=ascii -mnocsect -fno-short-enums -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -m64 -mzos-target=zosv2r4"
-    export ZOPEN_LDFLAGS="-Wl,-bedit=no"
+    export ZOPEN_LDFLAGS="-Wl,-bedit=no -m64"
     export ZOPEN_COMP="CLANG"
 
     if \$buildInReleaseMode; then
