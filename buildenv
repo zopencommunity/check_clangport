@@ -9,6 +9,8 @@ export ZOPEN_CONFIGURE=skip
 export ZOPEN_CHECK=zopen_check
 export ZOPEN_MAKE=skip
 export ZOPEN_INSTALL=zopen_install
+DEFAULT_OS_VER="zosv2r5"
+DEFAULT_ARCH="z13"
 
 zopen_check()
 {
@@ -32,19 +34,20 @@ cat <<zz
     # Find the path to clang
     #
     # Prefer OEL Clang since IBM-clang introduces elevated warnings to errors
-    CLANG_PATH=\$(PATH="\$ZOPEN_OLD_PATH" /bin/type clang 2>/dev/null | cut -f3 -d' ')
-    if [ ! -z "\${CLANG_PATH}" ] ; then
+    if [ "\${ZOPEN_COMP}" != "openxl" ]; then
+      CLANG_PATH=\$(PATH="\$ZOPEN_OLD_PATH" /bin/type clang 2>/dev/null | cut -f3 -d' ')
+      if [ ! -z "\${CLANG_PATH}" ] ; then
         # clang exists
-        #echo "Using clang: \${CLANG_PATH}"
+        # echo "Using clang: \${CLANG_PATH}"
         CLANG_BIN=\$(basename \${CLANG_PATH})
+      fi
     fi
-
     # Use ibm-clang preferably...
     if [ -z "\${CLANG_BIN}" ] ; then
-      CLANG_PATH=\$(PATH="\$ZOPEN_OLD_PATH" /bin/type ibm-clang 2>/dev/null | cut -f3 -d' ')
+      CLANG_PATH=\$(PATH="\$ZOPEN_OLD_PATH" /bin/type ibm-clang64 2>/dev/null | cut -f3 -d' ')
       if [ ! -z "\${CLANG_PATH}" ] ; then
           # ibm-clang exists
-          #echo "Using ibm-clang: \${CLANG_PATH}"
+          # echo "Using ibm-clang64: \${CLANG_PATH}"
           CLANG_BIN=\$(basename \${CLANG_PATH})
       else
           #echo "ibm-clang does not exist, trying next compiler choice..."
@@ -79,20 +82,39 @@ cat <<zz
     # Set the PATH environment variable to the directory of the Clang path
     export PATH="\$(dirname "\${CLANG_PATH}"):\${PATH}"
     # Set the CC/CXX environment variables to the proper compiler
-    if [ "\${CLANG_BIN}" = "ibm-clang" ] ; then
-        export CC="ibm-clang"
-        export CXX="ibm-clang++"
+    if [ "\${CLANG_BIN}" = "ibm-clang64" ] ; then
+        export CC="ibm-clang64"
+        export CXX="ibm-clang64++"
+        export ZOPEN_CFLAGS="-fzos-le-char-mode=ascii -std=gnu11 -mnocsect -fno-short-enums"
+        export ZOPEN_CXXFLAGS="-fzos-le-char-mode=ascii -mnocsect -fno-short-enums"
+        export ZOPEN_COMP="OPENXL"
     elif [ "\${CLANG_BIN}" = "clang" ] ; then
         export CC="clang"
         export CXX="clang++"
+        export ZOPEN_CFLAGS="-fzos-le-char-mode=ascii -std=gnu11 -mnocsect -fno-short-enums -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -m64"
+        export ZOPEN_CXXFLAGS="-fzos-le-char-mode=ascii -mnocsect -fno-short-enums -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -m64"
+        export ZOPEN_COMP="CLANG"
+    fi
+
+    # Only append defaults if not present in ZOPEN_EXTRA_CFLAGS
+    if ! echo "\$ZOPEN_EXTRA_CFLAGS" | grep -q "mzos-target"; then
+      ZOPEN_CFLAGS="\$ZOPEN_CFLAGS -mzos-target=${DEFAULT_OS_VER}"
+    fi
+
+    if ! echo "\$ZOPEN_EXTRA_CFLAGS" | grep -q "march"; then
+      ZOPEN_CFLAGS="\$ZOPEN_CFLAGS -march=${DEFAULT_ARCH}"
+    fi
+
+    if ! echo "\$ZOPEN_EXTRA_CXXFLAGS" | grep -q "mzos-target"; then
+      ZOPEN_CXXFLAGS="\$ZOPEN_CXXFLAGS -mzos-target=${DEFAULT_OS_VER}"
+    fi
+
+    if ! echo "\$ZOPEN_EXTRA_CXXFLAGS" | grep -q "march"; then
+      ZOPEN_CXXFLAGS="\$ZOPEN_CXXFLAGS -march=${DEFAULT_ARCH}"
     fi
 
     export ZOPEN_CPPFLAGS="-DNSIG=42 -D_XOPEN_SOURCE=600 -D_ALL_SOURCE -D_OPEN_SYS_FILE_EXT=1 -D_AE_BIMODAL=1 -D_ENHANCED_ASCII_EXT=0xFFFFFFFF"
-    export ZOPEN_CFLAGS="-fzos-le-char-mode=ascii -std=gnu11 -mnocsect -fno-short-enums -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -m64 -mzos-target=zosv2r5 -march=z13"
-    export ZOPEN_CXXFLAGS="-fzos-le-char-mode=ascii -mnocsect -fno-short-enums -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -m64 -mzos-target=zosv2r5 -march=z13"
     export ZOPEN_LDFLAGS="-Wl,-bedit=no -m64"
-    export ZOPEN_COMP="CLANG"
-
     if \$buildInReleaseMode; then
       ZOPEN_CFLAGS="\${ZOPEN_CFLAGS} -O3";
       ZOPEN_CXXFLAGS="\${ZOPEN_CXXFLAGS} -O3";
