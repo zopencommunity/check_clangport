@@ -84,33 +84,16 @@ cat <<zz
     # Set the CC/CXX environment variables to the proper compiler
     if [ "\${CLANG_BIN}" = "ibm-clang64" ] ; then
         export CC="ibm-clang64"
-        export CXX="ibm-clang64++"
-        export ZOPEN_CFLAGS="-fzos-le-char-mode=ascii -std=gnu11 -mnocsect -fno-short-enums"
-        export ZOPEN_CXXFLAGS="-fzos-le-char-mode=ascii -mnocsect -fno-short-enums"
+        export CXX="ibm-clang++64"
+        export ZOPEN_CFLAGS="-fzos-le-char-mode=ascii -std=gnu11 -mnocsect -fno-short-enums -mzos-target=${DEFAULT_OS_VER} -march=${DEFAULT_ARCH}"
+        export ZOPEN_CXXFLAGS="-fzos-le-char-mode=ascii -mnocsect -fno-short-enums -mzos-target=${DEFAULT_OS_VER} -march=${DEFAULT_ARCH}"
         export ZOPEN_COMP="OPENXL"
     elif [ "\${CLANG_BIN}" = "clang" ] ; then
         export CC="clang"
         export CXX="clang++"
-        export ZOPEN_CFLAGS="-fzos-le-char-mode=ascii -std=gnu11 -mnocsect -fno-short-enums -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -m64"
-        export ZOPEN_CXXFLAGS="-fzos-le-char-mode=ascii -mnocsect -fno-short-enums -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -m64"
+        export ZOPEN_CFLAGS="-fzos-le-char-mode=ascii -std=gnu11 -mnocsect -fno-short-enums -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -m64 -mzos-target=${DEFAULT_OS_VER} -march=${DEFAULT_ARCH}"
+        export ZOPEN_CXXFLAGS="-fzos-le-char-mode=ascii -mnocsect -fno-short-enums -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -m64 -mzos-target=${DEFAULT_OS_VER} -march=${DEFAULT_ARCH}"
         export ZOPEN_COMP="CLANG"
-    fi
-
-    # Only append defaults if not present in ZOPEN_EXTRA_CFLAGS
-    if ! echo "\$ZOPEN_EXTRA_CFLAGS" | grep -q "mzos-target"; then
-      ZOPEN_CFLAGS="\$ZOPEN_CFLAGS -mzos-target=${DEFAULT_OS_VER}"
-    fi
-
-    if ! echo "\$ZOPEN_EXTRA_CFLAGS" | grep -q "march"; then
-      ZOPEN_CFLAGS="\$ZOPEN_CFLAGS -march=${DEFAULT_ARCH}"
-    fi
-
-    if ! echo "\$ZOPEN_EXTRA_CXXFLAGS" | grep -q "mzos-target"; then
-      ZOPEN_CXXFLAGS="\$ZOPEN_CXXFLAGS -mzos-target=${DEFAULT_OS_VER}"
-    fi
-
-    if ! echo "\$ZOPEN_EXTRA_CXXFLAGS" | grep -q "march"; then
-      ZOPEN_CXXFLAGS="\$ZOPEN_CXXFLAGS -march=${DEFAULT_ARCH}"
     fi
 
     export ZOPEN_CPPFLAGS="-DNSIG=42 -D_XOPEN_SOURCE=600 -D_ALL_SOURCE -D_OPEN_SYS_FILE_EXT=1 -D_AE_BIMODAL=1 -D_ENHANCED_ASCII_EXT=0xFFFFFFFF"
