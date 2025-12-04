@@ -101,7 +101,7 @@ cat <<zz
     export ZOPEN_CXXFLAGS="${BASE_CXX_FLAGS} ${BASE_COMMON_FLAGS} \${EXTRA_CXXFLAGS}"
 
     export ZOPEN_CPPFLAGS="-DNSIG=42 -D_XOPEN_SOURCE=600 -D_ALL_SOURCE -D_OPEN_SYS_FILE_EXT=1 -D_AE_BIMODAL=1 -D_ENHANCED_ASCII_EXT=0xFFFFFFFF"
-    export ZOPEN_LDFLAGS="-Wl,-bedit=no -m64"
+    export ZOPEN_LDFLAGS="-Wl,-bcompress=yes -m64"
     if \$buildInReleaseMode; then
       ZOPEN_CFLAGS="\${ZOPEN_CFLAGS} -O3";
       ZOPEN_CXXFLAGS="\${ZOPEN_CXXFLAGS} -O3";
