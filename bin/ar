@@ -54,6 +54,10 @@ done
 
 ndups=
 for o in $dups; do
+  if [ ! -f "$o" ]; then
+    echo "Skipping missing duplicate: $o" >&2
+    continue
+  fi
   newtgtname=$(echo "$o" | sed 's:/:_:g')
   /bin/cp "$o" "$_TMPDIR/$newtgtname" || exit 1
   ndups="$ndups $_TMPDIR/$newtgtname"
