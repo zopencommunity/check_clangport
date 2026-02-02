@@ -138,5 +138,5 @@ zopen_install() {
 
 zopen_get_version()
 {
-  PATH=$ZOPEN_OLD_PATH clang --version | head -1 | awk '{print $11; }'
+  PATH=$ZOPEN_OLD_PATH clang --version | head -1 | awk '{print $12; }'
 }
