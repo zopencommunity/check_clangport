@@ -4,7 +4,7 @@
 export ZOPEN_TYPE="BARE"
 export ZOPEN_CATEGORIES="development"
 
-export ZOPEN_NAME="comp_clang"
+export ZOPEN_NAME="check_clang"
 export ZOPEN_CONFIGURE=skip
 export ZOPEN_CHECK=zopen_check
 export ZOPEN_MAKE=skip
@@ -32,100 +32,114 @@ zopen_check_results()
 zopen_append_to_env()
 {
 cat <<zz
-  if [ ! -z "\$ZOPEN_IN_ZOPEN_BUILD" ]; then
-    #
-    # Find the path to clang
-    #
-    # Prefer OEL Clang since IBM-clang introduces elevated warnings to errors
-    if [ "\${ZOPEN_COMP}" != "openxl" ]; then
-      CLANG_PATH=\$(PATH="\$ZOPEN_OLD_PATH" /bin/type clang 2>/dev/null | cut -f3 -d' ')
-      if [ ! -z "\${CLANG_PATH}" ] ; then
-        # clang exists
-        # echo "Using clang: \${CLANG_PATH}"
-        CLANG_BIN=\$(basename \${CLANG_PATH})
-      fi
-    fi
-    # Use ibm-clang preferably...
-    if [ -z "\${CLANG_BIN}" ] ; then
-      CLANG_PATH=\$(PATH="\$ZOPEN_OLD_PATH" /bin/type ibm-clang64 2>/dev/null | cut -f3 -d' ')
-      if [ ! -z "\${CLANG_PATH}" ] ; then
-          # ibm-clang exists
-          # echo "Using ibm-clang64: \${CLANG_PATH}"
-          CLANG_BIN=\$(basename \${CLANG_PATH})
-      else
-          #echo "ibm-clang does not exist, trying next compiler choice..."
-          CLANG_BIN=""
-      fi
-    fi
-  else
-    return 0 # This should do nothing if not in zopen build
+  # Only execute during zopen build
+  if [ -z "\$ZOPEN_IN_ZOPEN_BUILD" ]; then
+    return 0
   fi
 
-  # If Clang is not found, exit with an error message
+  # Constants
+  CLANG_DOWNLOAD_URL="https://epwt-www.mybluemix.net/software/support/trial/cst/programwebsite.wss?siteId=1803"
+  MIN_COMPILER_VER=50000000  # OEL 2.0.0
+
+  # ============================================================================
+  # Detect clang compiler
+  # ============================================================================
+  # Prefer OEL clang over ibm-clang64 (unless ZOPEN_COMP is set to openxl)
+  CLANG_PATH=""
+  CLANG_BIN=""
+
+  if [ "\${ZOPEN_COMP}" != "openxl" ]; then
+    CLANG_PATH=\$(PATH="\$ZOPEN_OLD_PATH" /bin/type clang 2>/dev/null | cut -f3 -d' ')
+    if [ -n "\${CLANG_PATH}" ]; then
+      CLANG_BIN="clang"
+    fi
+  fi
+
+  # Fallback to ibm-clang64 if OEL clang not found
+  if [ -z "\${CLANG_BIN}" ]; then
+    CLANG_PATH=\$(PATH="\$ZOPEN_OLD_PATH" /bin/type ibm-clang64 2>/dev/null | cut -f3 -d' ')
+    if [ -n "\${CLANG_PATH}" ]; then
+      CLANG_BIN="ibm-clang64"
+    fi
+  fi
+
+  # Exit if no clang compiler found
   if [ -z "\${CLANG_PATH}" ]; then
-      echo "clang not found. Please download and install from https://epwt-www.mybluemix.net/software/support/trial/cst/programwebsite.wss?siteId=1803." >&2
-      return 1
-  fi
-
-  if ! \${CLANG_PATH} --version >/dev/null 2>&1; then
-    if ! STEPLIB="\$ZOPEN_OLD_STEPLIB" \${CLANG_PATH} --version >/dev/null 2>&1; then
-      echo "The clang executable is not a functional zos clang compiler. Please download and install from https://epwt-www.mybluemix.net/software/support/trial/cst/programwebsite.wss?siteId=1803." >&2
-      return 1
-    fi
-    # We need to set STEPLIB
-    export STEPLIB="\$ZOPEN_OLD_STEPLIB"
-  fi
-
-  if ! \${CLANG_PATH} --version 2>&1 | grep -q "s390x\?-ibm-zos"; then
-    echo "The clang executable is not a zos clang compiler. Please download and install from https://epwt-www.mybluemix.net/software/support/trial/cst/programwebsite.wss?siteId=1803." >&2 
+    echo "Error: clang not found. Please download and install from \${CLANG_DOWNLOAD_URL}" >&2
     return 1
   fi
 
-  if [ ! -z "\$ZOPEN_IN_ZOPEN_BUILD" ]; then
-    # Set the PATH environment variable to the directory of the Clang path
-    export PATH="\$(dirname "\${CLANG_PATH}"):\${PATH}"
-    # Set the CC/CXX environment variables to the proper compiler
-    if [ "\${CLANG_BIN}" = "ibm-clang64" ] ; then
-        export CC="ibm-clang64"
-        export CXX="ibm-clang++64"
-        export ZOPEN_COMP="OPENXL"
-    elif [ "\${CLANG_BIN}" = "clang" ] ; then
-        export CC="clang"
-        export CXX="clang++"
-        EXTRA_CFLAGS="-fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc"
-        EXTRA_CXXFLAGS="-fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc"
-        export ZOPEN_COMP="CLANG"
-    fi
-
-    export ZOPEN_CFLAGS="${BASE_C_FLAGS} ${BASE_COMMON_FLAGS} \${EXTRA_CFLAGS}"
-    export ZOPEN_CXXFLAGS="${BASE_CXX_FLAGS} ${BASE_COMMON_FLAGS} \${EXTRA_CXXFLAGS}"
-
-    export ZOPEN_CPPFLAGS="-DNSIG=42 -D_XOPEN_SOURCE=600 -D_ALL_SOURCE -D_OPEN_SYS_FILE_EXT=1 -D_AE_BIMODAL=1 -D_ENHANCED_ASCII_EXT=0xFFFFFFFF"
-    export ZOPEN_LDFLAGS="-Wl,-bcompress=yes -m64"
-    if \$buildInReleaseMode; then
-      ZOPEN_CFLAGS="\${ZOPEN_CFLAGS} -O3";
-      ZOPEN_CXXFLAGS="\${ZOPEN_CXXFLAGS} -O3";
+  # ============================================================================
+  # Validate clang functionality
+  # ============================================================================
+  # Test if clang executable runs
+  if ! "\${CLANG_PATH}" --version >/dev/null 2>&1; then
+    # Try with STEPLIB set
+    if STEPLIB="\$ZOPEN_OLD_STEPLIB" "\${CLANG_PATH}" --version >/dev/null 2>&1; then
+      export STEPLIB="\$ZOPEN_OLD_STEPLIB"
     else
-      ZOPEN_LDFLAGS=""
+      echo "Error: clang executable is not functional. Please download and install from \${CLANG_DOWNLOAD_URL}" >&2
+      return 1
     fi
+  fi
 
-    # Confirm clang is at least OEL 2.0.0 (aka __COMPILER_VER__=50000000)
-    ccraw=\$(\${CC} -E -dM - </dev/null | grep '__COMPILER_VER__' | awk '{print substr(\$3,3)}')
-    if [ "\${ccraw}x" = "x" ]; then
-      echo "clang compiler specified, but it is not a 'IBM C/C++ for Open Enterprise Languages on z/OS' compiler" >&2
-    fi
-    if [ \${ccraw} -lt 50000000 ] ; then
-      echo "clang compiler specified, need to be running at least IBM C for Open Enterprise Languages on z/OS 2" >&2
-    fi
+  # Verify it's a z/OS clang compiler
+  if ! "\${CLANG_PATH}" --version 2>&1 | grep -q "s390x\?-ibm-zos"; then
+    echo "Error: clang executable is not a z/OS compiler. Please download and install from \${CLANG_DOWNLOAD_URL}" >&2
+    return 1
+  fi
 
-    # Confirm clang++ is at least OEL 2.0.0 (aka __COMPILER_VER__=50000000)
-    ccraw=\$(\${CXX} -x c++ -E -dM - </dev/null | grep '__COMPILER_VER__' | awk '{print substr(\$3,3)}')
-    if [ "\${ccraw}x" = "x" ]; then
-      echo "clang++ compiler specified, but it is not a 'IBM C/C++ for Open Enterprise Languages on z/OS' compiler" >&2
-    fi
-    if [ \${ccraw} -lt 50000000 ] ; then
-      echo "clang compiler specified, need to be running at least IBM C for Open Enterprise Languages on z/OS 2" >&2
-    fi
+  # ============================================================================
+  # Setup compiler environment
+  # ============================================================================
+  export PATH="\$(dirname "\${CLANG_PATH}"):\${PATH}"
+
+  # Configure compiler based on detected type
+  if [ "\${CLANG_BIN}" = "ibm-clang64" ]; then
+    export CC="ibm-clang64"
+    export CXX="ibm-clang++64"
+    export ZOPEN_COMP="OPENXL"
+    EXTRA_CFLAGS=""
+    EXTRA_CXXFLAGS=""
+  else
+    export CC="clang"
+    export CXX="clang++"
+    export ZOPEN_COMP="CLANG"
+    EXTRA_CFLAGS="-fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc"
+    EXTRA_CXXFLAGS="-fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc"
+  fi
+
+  # Setup compiler flags
+  export ZOPEN_CFLAGS="${BASE_C_FLAGS} ${BASE_COMMON_FLAGS} \${EXTRA_CFLAGS}"
+  export ZOPEN_CXXFLAGS="${BASE_CXX_FLAGS} ${BASE_COMMON_FLAGS} \${EXTRA_CXXFLAGS}"
+  export ZOPEN_CPPFLAGS="-DNSIG=42 -D_XOPEN_SOURCE=600 -D_ALL_SOURCE -D_OPEN_SYS_FILE_EXT=1 -D_AE_BIMODAL=1 -D_ENHANCED_ASCII_EXT=0xFFFFFFFF"
+  export ZOPEN_LDFLAGS="-Wl,-bcompress=yes -m64"
+
+  # Adjust optimization flags for release mode
+  if \$buildInReleaseMode; then
+    ZOPEN_CFLAGS="\${ZOPEN_CFLAGS} -O3"
+    ZOPEN_CXXFLAGS="\${ZOPEN_CXXFLAGS} -O3"
+  else
+    ZOPEN_LDFLAGS=""
+  fi
+
+  # ============================================================================
+  # Validate compiler versions
+  # ============================================================================
+  # Check C compiler version
+  cc_ver=\$(\${CC} -E -dM - </dev/null 2>/dev/null | grep '__COMPILER_VER__' | awk '{print substr(\$3,3)}')
+  if [ -z "\${cc_ver}" ]; then
+    echo "Warning: C compiler is not an IBM C/C++ for Open Enterprise Languages on z/OS compiler" >&2
+  elif [ "\${cc_ver}" -lt "\${MIN_COMPILER_VER}" ]; then
+    echo "Warning: C compiler must be at least IBM C for Open Enterprise Languages on z/OS 2.0.0" >&2
+  fi
+
+  # Check C++ compiler version
+  cxx_ver=\$(\${CXX} -x c++ -E -dM - </dev/null 2>/dev/null | grep '__COMPILER_VER__' | awk '{print substr(\$3,3)}')
+  if [ -z "\${cxx_ver}" ]; then
+    echo "Warning: C++ compiler is not an IBM C/C++ for Open Enterprise Languages on z/OS compiler" >&2
+  elif [ "\${cxx_ver}" -lt "\${MIN_COMPILER_VER}" ]; then
+    echo "Warning: C++ compiler must be at least IBM C for Open Enterprise Languages on z/OS 2.0.0" >&2
   fi
 
 zz
