@@ -3,6 +3,7 @@
 
 export ZOPEN_TYPE="BARE"
 export ZOPEN_CATEGORIES="development"
+export ZOPEN_RUNTIME_DEPS="which"
 
 export ZOPEN_NAME="check_clang"
 export ZOPEN_CONFIGURE=skip
@@ -46,18 +47,53 @@ cat <<zz
   # ============================================================================
   # Prefer OEL clang over ibm-clang64 (unless ZOPEN_COMP is set to openxl)
   CLANG_PATH=""
+  CLANG_WRAPPER_PATH=""
   CLANG_BIN=""
 
   if [ "\${ZOPEN_COMP}" != "openxl" ]; then
-    CLANG_PATH=\$(PATH="\$ZOPEN_OLD_PATH" /bin/type clang 2>/dev/null | cut -f3 -d' ')
-    if [ -n "\${CLANG_PATH}" ]; then
-      CLANG_BIN="clang"
-    fi
+    # Use which -a to find all clang instances. We need to identify:
+    # 1. The real z/OS clang compiler (validates with --version)
+    # 2. Any wrapper (sage/ccache) that appeared before it in PATH
+    for _candidate in \$(PATH="\$ZOPEN_OLD_PATH" which -a clang 2>/dev/null); do
+      # Check if this is a symlink to a known wrapper (sage, ccache, etc.)
+      _is_wrapper=false
+      if [ -L "\$_candidate" ]; then
+        _link_target=\$(ls -l "\$_candidate" 2>/dev/null | awk -F' -> ' '{print \$2}')
+        case "\$_link_target" in
+          *sage*|*ccache*|*distcc*|*sccache*)
+            _is_wrapper=true
+            ;;
+        esac
+      fi
+
+      if [ "\$_is_wrapper" = "true" ]; then
+        # Remember the first wrapper we find
+        if [ -z "\$CLANG_WRAPPER_PATH" ]; then
+          CLANG_WRAPPER_PATH="\$_candidate"
+        fi
+        continue
+      fi
+
+      # Verify it's a real z/OS clang by checking --version output
+      if "\$_candidate" --version 2>&1 | grep -q "s390x\\?-ibm-zos"; then
+        CLANG_PATH="\$_candidate"
+        CLANG_BIN="clang"
+        break
+      fi
+      # Also try with STEPLIB in case it needs it
+      if STEPLIB="\$ZOPEN_OLD_STEPLIB" "\$_candidate" --version 2>&1 | grep -q "s390x\\?-ibm-zos"; then
+        CLANG_PATH="\$_candidate"
+        CLANG_BIN="clang"
+        export STEPLIB="\$ZOPEN_OLD_STEPLIB"
+        break
+      fi
+    done
+    unset _candidate _link_target _is_wrapper
   fi
 
   # Fallback to ibm-clang64 if OEL clang not found
   if [ -z "\${CLANG_BIN}" ]; then
-    CLANG_PATH=\$(PATH="\$ZOPEN_OLD_PATH" /bin/type ibm-clang64 2>/dev/null | cut -f3 -d' ')
+    CLANG_PATH=\$(PATH="\$ZOPEN_OLD_PATH" which ibm-clang64 2>/dev/null)
     if [ -n "\${CLANG_PATH}" ]; then
       CLANG_BIN="ibm-clang64"
     fi
@@ -72,27 +108,34 @@ cat <<zz
   # ============================================================================
   # Validate clang functionality
   # ============================================================================
-  # Test if clang executable runs
-  if ! "\${CLANG_PATH}" --version >/dev/null 2>&1; then
-    # Try with STEPLIB set
-    if STEPLIB="\$ZOPEN_OLD_STEPLIB" "\${CLANG_PATH}" --version >/dev/null 2>&1; then
-      export STEPLIB="\$ZOPEN_OLD_STEPLIB"
-    else
-      echo "Error: clang executable is not functional. Please download and install from \${CLANG_DOWNLOAD_URL}" >&2
+  # Test if clang executable runs (for ibm-clang64 fallback path which
+  # didn't go through the which -a validation above)
+  if [ "\${CLANG_BIN}" = "ibm-clang64" ]; then
+    if ! "\${CLANG_PATH}" --version >/dev/null 2>&1; then
+      if STEPLIB="\$ZOPEN_OLD_STEPLIB" "\${CLANG_PATH}" --version >/dev/null 2>&1; then
+        export STEPLIB="\$ZOPEN_OLD_STEPLIB"
+      else
+        echo "Error: clang executable is not functional. Please download and install from \${CLANG_DOWNLOAD_URL}" >&2
+        return 1
+      fi
+    fi
+
+    # Verify it's a z/OS clang compiler
+    if ! "\${CLANG_PATH}" --version 2>&1 | grep -q "s390x\\?-ibm-zos"; then
+      echo "Error: clang executable is not a z/OS compiler. Please download and install from \${CLANG_DOWNLOAD_URL}" >&2
       return 1
     fi
-  fi
-
-  # Verify it's a z/OS clang compiler
-  if ! "\${CLANG_PATH}" --version 2>&1 | grep -q "s390x\?-ibm-zos"; then
-    echo "Error: clang executable is not a z/OS compiler. Please download and install from \${CLANG_DOWNLOAD_URL}" >&2
-    return 1
   fi
 
   # ============================================================================
   # Setup compiler environment
   # ============================================================================
+  # Add the real clang directory first, then the wrapper (if any) in front
+  # so the wrapper intercepts calls but can still find the real compiler
   export PATH="\$(dirname "\${CLANG_PATH}"):\${PATH}"
+  if [ -n "\${CLANG_WRAPPER_PATH}" ]; then
+    export PATH="\$(dirname "\${CLANG_WRAPPER_PATH}"):\${PATH}"
+  fi
 
   # Configure compiler based on detected type
   if [ "\${CLANG_BIN}" = "ibm-clang64" ]; then
